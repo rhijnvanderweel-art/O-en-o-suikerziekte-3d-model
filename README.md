@@ -18,7 +18,7 @@ Overall size: **154 mm wide × 186 mm deep × 75 mm high** (limit was 200 × 200
 | Bin can be moved between stations | The bin drops from above onto a dovetail on the shell side and lifts straight off again. Taken off the station, the lid slides off the back for refilling. |
 
 The shell is open at the floor and the front, as asked. The one deviation: the
-side wall has a narrow slot for the driver block (mostly covered by the block).
+side wall has a narrow slot for the driver block, which the mechanism needs.
 
 ## Parts to print (`stl/`, already in print orientation, no supports needed)
 
