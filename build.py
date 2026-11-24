@@ -14,7 +14,8 @@ Parts
   driver  small block screwed to the box through a slot in the shell wall;
           it is the travel stop and it drags the bin lid
   bin     food bin, drops onto a dovetail on the side of the shell
-  lid     sliding lid of the bin
+  lid     sliding lid of the bin (plain, slides in from the back)
+  catch   screwed onto the lid after assembly; its notch grips the driver lug
 """
 import os
 import cadquery as cq
@@ -170,25 +171,48 @@ def make_bin():
 
 
 # ------------------------------------------------------------------------ lid
-def make_lid():
-    """Closed position."""
+CATCH_TOP = BIN_TOP + LID_T + 4.0          # catch is 4 mm thick on top of the lid
+CATCH_Y0, CATCH_Y1 = BIN_Y0 + 0.4, 32.5    # 32.5 + 40 travel stays clear of the left rail (y 73)
+CATCH_SCREWS = ((101.0, 20.0), (101.0, 28.0))
+LUG_Y = KEY_B0 - PROTRUDE - TRAVEL         # front of the driver lug when the box is out
+
+
+def lid_body():
+    """Plain dovetail lid in the closed position. It has no ear, so it slides
+    into the bin from the back underneath all three undercut rails."""
     t, h = BIN_TOP, BIN_TOP + LID_T
     xa, xb = BIN_X0 + 4.5 + CLR, BIN_X1 - 4.5 - CLR
     ya = BIN_Y0 + 2 + CLR
     l = prism([(xa, t), (xb, t), (xb - LID_T, h), (xa + LID_T, h)], "y", ya, BIN_Y1)
-    l = l.intersect(prism([(ya, t), (ya + LID_T, h), (BIN_Y1 + 1, h), (BIN_Y1 + 1, t)], "x", 80, 160))
-    # ear with the notch that drops over the driver lug
-    lug_y = KEY_B0 - PROTRUDE - TRAVEL
-    ear = block(BIN_X0 - 0.2, 96, ya, 31.8, t, h)
-    ear = ear.cut(block(80, LUG_X1 + 0.4, lug_y - 0.3, lug_y + 8.3, t - 1, h + 1))
-    l = l.union(ear)
-    # grip ridge for the staff
-    l = l.union(block(110, 130, 89, 92, h - 0.1, h + 2.5))
+    return l.intersect(prism([(ya, t), (ya + LID_T, h), (BIN_Y1 + 1, h), (BIN_Y1 + 1, t)], "x", 80, 160))
+
+
+def make_lid():
+    l = lid_body()
+    h = BIN_TOP + LID_T
+    l = l.union(block(110, 130, 89, 92, h - 0.1, h + 2.5))          # grip ridge
+    for x, y in CATCH_SCREWS:                                       # pilot holes for the catch
+        l = l.cut(cyl_z(PILOT, BIN_TOP - 1, h + 1, x, y))
     return l
 
 
+def make_catch():
+    """Screwed onto the lid after the lid is in the bin. Its notch drops over
+    the driver lug, so the lid follows the box. Closed position."""
+    t, h = BIN_TOP, BIN_TOP + LID_T
+    c = block(BIN_X0 - 0.2, 96.1, CATCH_Y0, CATCH_Y1, t, CATCH_TOP)      # left of the front rail
+    c = c.union(block(96.0, 108, BIN_Y0 + 6.4, CATCH_Y1, h, CATCH_TOP))  # plate on top of the lid
+    c = c.cut(lid_body())                                               # hugs the lid edge exactly
+    c = c.cut(block(80, LUG_X1 + 0.4, LUG_Y - 0.3, LUG_Y + 8.3, t - 1, CATCH_TOP + 1))  # lug notch
+    for x, y in CATCH_SCREWS:
+        c = c.cut(cyl_z(FREE, t - 1, CATCH_TOP + 1, x, y))
+        c = c.cut(cyl_z(6.4, CATCH_TOP - 1.5, CATCH_TOP + 1, x, y))      # sunk screw heads
+    return c
+
+
 # ------------------------------------------------------------------ build all
-shell, box, driver, bin_, lid = make_shell(), make_box(), make_driver(), make_bin(), make_lid()
+shell, box, driver, bin_, lid, catch = (make_shell(), make_box(), make_driver(), make_bin(),
+                                       make_lid(), make_catch())
 
 
 def placed(part, y):
@@ -207,24 +231,40 @@ def vol(a, b):
 
 def check():
     ok = True
-    cases = []
-    for name, by, ly in (("box out / lid closed", Y_OUT, 0), ("half way", Y_OUT + 20, 20),
-                         ("box in / lid open", Y_IN, TRAVEL)):
-        b, d, l = placed(box, by), placed(driver, by), placed(lid, ly)
-        cases += [(name, "shell-box", shell, b), (name, "shell-driver", shell, d),
-                  (name, "box-driver", b, d), (name, "bin-driver", bin_, d),
-                  (name, "bin-lid", bin_, l), (name, "lid-driver", l, d),
-                  (name, "lid-shell", l, shell), (name, "bin-shell", bin_, shell),
-                  (name, "bin-box", bin_, b)]
-    for name, pair, a, b in cases:
+
+    def clash(label, a, b):
+        nonlocal ok
         v = vol(a, b)
         if v > 1e-3:
             ok = False
-            print(f"  COLLISION {name}: {pair} {v:.2f} mm3")
-    # things that MUST be blocked
+            print(f"  COLLISION {label}: {v:.2f} mm3")
+        return v > 1e-3
+
+    # 1. assembling: the bare lid slides in from the back of the bin (every 2 mm)
+    hits = [s for s in range(0, 96, 2) if clash(f"lid insertion at {s} mm", placed(lid, s), bin_)]
+    print(f"  {'FAIL' if hits else 'ok '} lid slides into the bin from the back without hitting anything")
+    # 2. the catch can be screwed on and the bin lowered onto the station
+    lowering = [z for z in range(0, 31, 2) if
+                clash(f"bin lowered {z}", catch.translate((0, 0, z)), placed(driver, Y_OUT))
+                + clash(f"bin lowered {z} (bin)", bin_.translate((0, 0, z)), shell)]
+    print(f"  {'FAIL' if lowering else 'ok '} bin with lid and catch drops onto the station")
+    # 3. working: box and lid move together over the full travel (every 2 mm)
+    bad = 0
+    for s in range(0, int(TRAVEL) + 1, 2):
+        b, d, l, c = placed(box, Y_OUT + s), placed(driver, Y_OUT + s), placed(lid, s), placed(catch, s)
+        for n, a, o in (("shell-box", shell, b), ("shell-driver", shell, d), ("box-driver", b, d),
+                        ("bin-driver", bin_, d), ("bin-lid", bin_, l), ("bin-catch", bin_, c),
+                        ("lid-catch", l, c), ("catch-driver", c, d), ("lid-driver", l, d),
+                        ("catch-shell", c, shell), ("lid-shell", l, shell), ("bin-shell", bin_, shell),
+                        ("bin-box", bin_, b)):
+            bad += clash(f"travel {s} mm {n}", a, o)
+    print(f"  {'FAIL' if bad else 'ok '} box and lid move together over the full {TRAVEL:.0f} mm without hitting anything")
+    # 4. things that MUST be blocked
     must = [
-        ("lid cannot open while box is out", placed(lid, 3), placed(driver, Y_OUT)),
+        ("lid cannot open while box is out", placed(catch, 1), placed(driver, Y_OUT)),
+        ("lid cannot be closed while box is in", placed(catch, TRAVEL - 1), placed(driver, Y_IN)),
         ("lid cannot be lifted off", lid.translate((0, 0, 2)), bin_),
+        ("lid with catch cannot slide off the back", placed(catch, TRAVEL + 3), bin_),
         ("box cannot be pulled out further", shell, placed(driver, Y_OUT - 2)),
         ("box cannot be pushed in further", shell, placed(driver, Y_IN + 2)),
         ("box cannot drop out of the floor", shell, placed(box, Y_IN).translate((0, 0, -2))),
@@ -255,7 +295,8 @@ if __name__ == "__main__":
     os.makedirs(f"{OUT}/step", exist_ok=True)
     for name, part, kind in (("1_shell", shell, "flip"), ("2_box", box, "flip"),
                              ("3_driver", driver, "front_down"), ("4_bin", bin_, None),
-                             ("5_lid", lid, None)):
+                             ("5_lid", lid, None),
+                             ("6_lid_catch", catch, "flip")):
         p = to_print(part, kind)
         bb = p.val().BoundingBox()
         cq.exporters.export(p, f"{OUT}/stl/{name}.stl", tolerance=0.02, angularTolerance=0.15)
@@ -268,9 +309,11 @@ if __name__ == "__main__":
         asm.add(placed(driver, by), name="driver", color=cq.Color(0.8, 0.15, 0.15))
         asm.add(bin_, name="bin", color=cq.Color(0.25, 0.55, 0.3))
         asm.add(placed(lid, ly), name="lid", color=cq.Color(0.95, 0.85, 0.3))
+        asm.add(placed(catch, ly), name="catch", color=cq.Color(0.2, 0.35, 0.8))
         asm.save(f"{OUT}/step/assembly_{tag}.step")
         for n, p in (("shell", shell), ("box", placed(box, by)), ("driver", placed(driver, by)),
-                     ("bin", bin_), ("lid", placed(lid, ly))):
+                     ("bin", bin_), ("lid", placed(lid, ly)),
+                     ("catch", placed(catch, ly))):
             os.makedirs(f"{OUT}/step/_tmp", exist_ok=True)
             cq.exporters.export(p, f"{OUT}/step/_tmp/{tag}_{n}.stl", tolerance=0.05, angularTolerance=0.2)
     total_y = (BIN_Y1 + TRAVEL) - (Y_OUT)

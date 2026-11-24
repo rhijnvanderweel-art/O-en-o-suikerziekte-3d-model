@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 OUT = os.path.dirname(os.path.abspath(__file__))
 COL = {"shell": (.6, .65, .7), "box": (.92, .55, .15), "driver": (.85, .15, .15),
-       "bin": (.3, .6, .35), "lid": (.95, .85, .3)}
+       "bin": (.3, .6, .35), "lid": (.95, .85, .3), "catch": (.2, .35, .8)}
 L = np.array([0.4, -0.6, 0.7]); L /= np.linalg.norm(L)
 
 def draw(ax, tag, elev, azim, hide=()):
