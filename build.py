@@ -1,21 +1,23 @@
 """
-Donkey feeding station - small scale printable model.
+Donkey feeding station - small scale printable model (version 2).
 
-Run:  python3 build.py
-Needs: pip install cadquery trimesh matplotlib
+Run:  python3 build.py        (needs: pip install cadquery trimesh matplotlib)
 
 All dimensions are millimetres.  Parts are modelled in their assembled
 position (x = width, y = depth with the shell front at y = 0, z = up) and are
 re-oriented for printing when the STL files are written.
 
 Parts
-  shell   hollow station, open at the floor and at the front
-  box     push box, hangs on two rails inside the shell
-  driver  small block screwed to the box through a slot in the shell wall;
-          it is the travel stop and it drags the bin lid
-  bin     food bin, drops onto a dovetail on the side of the shell
-  lid     sliding lid of the bin (plain, slides in from the back)
-  catch   screwed onto the lid after assembly; its notch grips the driver lug
+  shell   hollow station, open at the floor and at the front. Two side rails
+          and one top rail (dovetail on the roof) carry the box.
+  box     push box. It hangs from the rails 15 mm above the ground.
+  driver  block screwed to the box through a slot in the shell wall. The
+          closed slot ends are the travel stops; its lug drives the bin lid.
+  bin     food bin with a support tail behind it. The lid rails run over the
+          bin and the tail, so the lid can slide fully off the opening and
+          still be carried along its whole length.
+  lid     plain sliding lid, slides in from the back of the tail
+  catch   screwed onto the lid; its notch drops over the driver lug
 """
 import os
 import cadquery as cq
@@ -23,24 +25,58 @@ import cadquery as cq
 OUT = os.path.dirname(os.path.abspath(__file__))
 
 # ----------------------------------------------------------------- parameters
-TRAVEL = 40.0          # how far the box slides (= how far the lid opens)
+TRAVEL = 60.0          # box travel = lid travel (longer than the bin opening)
 PROTRUDE = 6.0         # box sticks out this far when fully pushed in
 CLR = 0.35             # sliding clearance between printed parts
-
-SH_W, SH_D, SH_H = 80.0, 110.0, 75.0   # shell outer size
-WALL, ROOF, BACK = 7.0, 7.0, 5.0       # shell wall thicknesses
-RAIL_Z = 50.0          # height of the rail centre line
-SCREW_Z = 51.8         # height of the two driver screws
 PILOT = 2.7            # hole an M3 screw cuts its own thread in
 FREE = 3.4             # hole an M3 screw passes through freely
-STOP_Y = 30.0          # position of the stop screw in the shell roof
+HEAD = 6.4             # counterbore for an M3 screw head (max 6 mm head)
 
-BOX_L = 100.0
-BIN_X0, BIN_X1 = 86.0, 154.0
-BIN_Y0, BIN_Y1 = 10.0, 100.0
+SH_W, SH_D, SH_H = 80.0, 120.0, 90.0   # shell outer size
+WALL, ROOF, BACK = 7.0, 9.0, 5.0
+RAIL_Z = 48.0          # side rail centre line
+SCREW_Z = 49.8         # driver screws
+STOP_X, STOP_Y = 16.0, 20.0            # roof stop screw
+
+BOX_Z0 = 15.0          # ground clearance under the box
+BOX_L = 120.0
+BOX_TOP_T = 6.0        # box top wall (holds the top-rail groove)
+
+TT_Z = SH_H - ROOF     # roof inner face (81)
+TT_H = 3.5             # top rail tongue height
+TT_HW = 6.0            # top rail tongue half width at the roof
+
+BIN_X0, BIN_X1 = 93.0, 163.0
+BIN_Y0, BIN_Y1 = 0.0, 67.0             # food bin
+TAIL_Y1 = 127.0                        # end of the lid support tail
 BIN_TOP = 50.0
-LID_T = 4.0
-DOVE_Y = 55.0          # centre of the dovetail that carries the bin
+SIDE_T, END_T, FLOOR_T = 8.0, 5.0, 3.0
+LID_T = 6.0
+LID_L = 63.0
+DOVE_Y = 75.0          # centre of the dovetail that carries the bin
+
+# derived
+XI0, XI1 = WALL, SH_W - WALL           # shell inner walls
+BX0, BX1 = XI0 + CLR, XI1 - CLR        # box sides
+BZ1 = TT_Z - 0.5                       # box top
+TONGUE = 3.0
+T_TIP, T_BASE = 5.5, 8.5
+G_DEPTH = TONGUE + 0.4
+G_TIP = T_TIP + 0.4
+Y_IN, Y_OUT = -PROTRUDE, -PROTRUDE - TRAVEL
+
+PLATE_X0, PLATE_X1 = SH_W + 0.5, SH_W + 5.5
+LUG_X1 = BIN_X0 - 0.5
+H_LID = BIN_TOP + LID_T                # lid top (56)
+RAIL_TOP = H_LID + 0.5
+LUG_Z0, LUG_Z1 = RAIL_TOP + 0.5, RAIL_TOP + 6.5        # 57 .. 63
+LID_Y0 = BIN_Y0 + 3 + CLR              # lid front when closed
+LUG_Y0 = 10.3                          # lug front, box out (shell coordinates)
+KEY_B0 = LUG_Y0 - Y_OUT                # same, box coordinates
+KEY_B1 = KEY_B0 + 26.0
+SCREW_B = (KEY_B0 + 8.0, KEY_B0 + 20.0)
+CATCH_Y0, CATCH_Y1 = LID_Y0 + 0.4, 26.0
+CATCH_SCREWS = ((112.0, 7.5), (112.0, 22.0))
 
 
 # -------------------------------------------------------------------- helpers
@@ -62,164 +98,161 @@ def prism(pts, axis, a0, a1):
 
 
 def cyl_x(d, x0, x1, y, z):
-    return (cq.Workplane("YZ").circle(d / 2).extrude(x1 - x0).translate((x0, y, z)))
-
-
-def cyl_y(d, y0, y1, x, z):
-    return (cq.Workplane("XZ").circle(d / 2).extrude(-(y1 - y0)).translate((x, y0, z)))
+    return cq.Workplane("YZ").circle(d / 2).extrude(x1 - x0).translate((x0, y, z))
 
 
 def cyl_z(d, z0, z1, x, y):
     return cq.Workplane("XY").circle(d / 2).extrude(z1 - z0).translate((x, y, z0))
 
 
-XI0, XI1 = WALL, SH_W - WALL                 # shell inner walls
-BX0, BX1 = XI0 + CLR, XI1 - CLR              # box outer sides
-TONGUE = 3.0                                 # rail sticks out of the box side
-T_TIP, T_BASE = 5.5, 8.5                     # rail half heights (45 degree flanks)
-G_DEPTH = TONGUE + 0.4
-G_TIP = T_TIP + 0.4
-KEY_B0, KEY_B1 = 64.0, 90.0                  # driver position along the box
-SCREW_B = (77.0, 85.0)
-PLATE_X0, PLATE_X1 = SH_W + 0.5, SH_W + 5.0
-LUG_X1 = 90.3
+def teardrop_y(d, y0, y1, x, z):
+    """Horizontal hole along y with a 45 degree point at the bottom, so it
+    prints cleanly when the part is printed upside down."""
+    r = d / 2
+    c = cq.Workplane("XZ").circle(r).extrude(-(y1 - y0)).translate((x, y0, z))
+    k = r / 2 ** 0.5
+    tip = prism([(x - k, z - k), (x, z - r * 2 ** 0.5), (x + k, z - k), (x, z)], "y", y0, y1)
+    return c.union(tip)
 
 
 # ---------------------------------------------------------------------- shell
 def make_shell():
     s = block(0, SH_W, 0, SH_D, 0, SH_H)
-    s = s.cut(block(XI0, XI1, -1, SH_D - BACK, -1, SH_H - ROOF))
-    # rail grooves, 45 degree flanks so they print without support
+    s = s.cut(block(XI0, XI1, -1, SH_D - BACK, -1, TT_Z))
+    # side rail grooves (45 degree flanks)
     gb = G_TIP + G_DEPTH + 0.1
     for sx, x in ((1, XI1), (-1, XI0)):
         s = s.cut(prism([(x - sx * 0.1, RAIL_Z - gb), (x + sx * G_DEPTH, RAIL_Z - G_TIP),
                          (x + sx * G_DEPTH, RAIL_Z + G_TIP), (x - sx * 0.1, RAIL_Z + gb)],
                         "y", -1, SH_D - BACK))
-    # slot for the driver: closed at both ends, this is what keeps the box in.
-    # Its lower face continues the 45 degree groove flank (prints clean upside down).
+    # top rail: dovetail tongue hanging from the roof (widens downward, 45 deg)
+    cx = SH_W / 2
+    s = s.union(prism([(cx - TT_HW, TT_Z + 0.1), (cx - TT_HW - TT_H, TT_Z - TT_H),
+                       (cx + TT_HW + TT_H, TT_Z - TT_H), (cx + TT_HW, TT_Z + 0.1)],
+                      "y", 0.5, SH_D - BACK + 0.1))
+    # slot for the driver, closed at both ends = travel stops
     xg = XI1 + G_DEPTH
     lo = RAIL_Z - G_TIP
     s = s.cut(prism([(xg - 0.05, lo - 0.05), (SH_W + 1, lo + (SH_W + 1 - xg)),
                      (SH_W + 1, RAIL_Z + G_TIP), (xg - 0.05, RAIL_Z + G_TIP)],
-                    "y", KEY_B0 - PROTRUDE - TRAVEL - 0.5, KEY_B1 - PROTRUDE + 0.5))
-    # second stop: screw through the roof into a slot in the box
-    s = s.cut(cyl_z(PILOT, SH_H - ROOF - 1, SH_H + 1, SH_W / 2, STOP_Y))
-    # dovetail that carries the bin
-    d = prism([(SH_W - 0.5, DOVE_Y - 6), (SH_W + 5, DOVE_Y - 9),
-               (SH_W + 5, DOVE_Y + 9), (SH_W - 0.5, DOVE_Y + 6)], "z", 0, 40)
-    d = d.cut(prism([(SH_W, 40.01), (SH_W + 6, 40.01), (SH_W + 6, 34)], "y", DOVE_Y - 12, DOVE_Y + 12))
+                    "y", KEY_B0 + Y_OUT - 0.5, KEY_B1 + Y_IN + 0.5))
+    # second stop: screw through the roof into a slot in the box top
+    s = s.cut(cyl_z(PILOT, TT_Z - 1, SH_H + 1, STOP_X, STOP_Y))
+    # dovetail that carries the bin (top chamfered for printing upside down)
+    d = prism([(SH_W - 0.5, DOVE_Y - 6), (SH_W + 5.5, DOVE_Y - 9),
+               (SH_W + 5.5, DOVE_Y + 9), (SH_W - 0.5, DOVE_Y + 6)], "z", 0, 36)
+    d = d.cut(prism([(SH_W, 36.01), (SH_W + 6, 36.01), (SH_W + 6, 30)], "y", DOVE_Y - 12, DOVE_Y + 12))
     return s.union(d)
 
 
 # ------------------------------------------------------------------------ box
 def make_box():
-    """Modelled in 'box coordinates': front face at y = 0."""
-    z0, z1 = 1.5, SH_H - ROOF - 0.5
+    """Box coordinates: front face at y = 0."""
+    z0, z1 = BOX_Z0, BZ1
     b = block(BX0, BX1, 0, BOX_L, z0, z1)
-    b = b.cut(block(BX0 + 3, BX1 - 3, 4, BOX_L - 3, z0 - 1, z1 - 3))
+    b = b.cut(block(BX0 + 3, BX1 - 3, 4, BOX_L - 3, z0 - 1, z1 - BOX_TOP_T))
+    # side rail tongues
     for sx, x in ((1, BX1), (-1, BX0)):
         b = b.union(prism([(x - sx * 0.5, RAIL_Z - T_BASE - 0.5), (x + sx * TONGUE, RAIL_Z - T_TIP),
                            (x + sx * TONGUE, RAIL_Z + T_TIP), (x - sx * 0.5, RAIL_Z + T_BASE + 0.5)],
                           "y", 0, BOX_L))
-    # thick block inside for the driver screws (reaches the roof: no overhang)
-    b = b.union(block(BX1 - 9, BX1 - 2.5, 70, 92, 44, z1 - 2.5))
+    # top rail groove (dovetail, 0.5 mm clearance each side, 0.4 mm at the bottom)
+    cx = SH_W / 2
+
+    def gh(z):
+        return TT_HW + 0.5 + (TT_Z - z)
+    zb = TT_Z - TT_H - 0.4
+    b = b.cut(prism([(cx - gh(z1 + 0.1), z1 + 0.1), (cx - gh(zb), zb),
+                     (cx + gh(zb), zb), (cx + gh(z1 + 0.1), z1 + 0.1)], "y", -1, BOX_L + 1))
+    # block inside for the driver screws (hangs from the top wall: no overhang)
+    b = b.union(block(BX1 - 9, BX1 - 2.5, KEY_B0 + 2, KEY_B1 - 2, 42, z1 - BOX_TOP_T + 0.1))
     for sb in SCREW_B:
         b = b.cut(cyl_x(PILOT, BX1 - 10, BX1 + TONGUE + 1, sb, SCREW_Z))
-    # pad + slot for the roof stop screw
-    b = b.union(block(SH_W / 2 - 8, SH_W / 2 + 8, 28, 84, z1 - 7, z1 - 2.5))
+    # slot for the roof stop screw
     y_a = STOP_Y + PROTRUDE + 0.2
     y_b = STOP_Y + PROTRUDE + TRAVEL - 0.2
-    slot = block(SH_W / 2 - 2, SH_W / 2 + 2, y_a, y_b, z1 - 5, z1 + 1)
-    slot = slot.union(cyl_z(4, z1 - 5, z1 + 1, SH_W / 2, y_a)).union(cyl_z(4, z1 - 5, z1 + 1, SH_W / 2, y_b))
+    slot = block(STOP_X - 2, STOP_X + 2, y_a, y_b, z1 - 5, z1 + 1)
+    slot = slot.union(cyl_z(4, z1 - 5, z1 + 1, STOP_X, y_a)).union(cyl_z(4, z1 - 5, z1 + 1, STOP_X, y_b))
     b = b.cut(slot)
     # finger hole to pull the box back out
-    b = b.cut(cyl_y(18, -1, 5, SH_W / 2, 30))
+    b = b.cut(teardrop_y(18, -1, 5, SH_W / 2, 38))
     return b
 
 
 # --------------------------------------------------------------------- driver
 def make_driver():
     """Box coordinates, like the box."""
-    d = block(PLATE_X0, PLATE_X1, KEY_B0, KEY_B1, 44, 59)
+    d = block(PLATE_X0, PLATE_X1, KEY_B0, KEY_B1, 42, LUG_Z1)
     d = d.union(block(BX1 + TONGUE, PLATE_X0 + 0.1, KEY_B0, KEY_B1, SCREW_Z - 3.7, SCREW_Z + 3.7))
-    d = d.union(block(PLATE_X1 - 0.1, LUG_X1, KEY_B0, KEY_B0 + 8, BIN_TOP + 0.5, 56))
+    d = d.union(block(PLATE_X1 - 0.1, LUG_X1, KEY_B0, KEY_B0 + 8, LUG_Z0, LUG_Z1))   # lug
     for sb in SCREW_B:
         d = d.cut(cyl_x(FREE, BX1, PLATE_X1 + 1, sb, SCREW_Z))
-        d = d.cut(cyl_x(6.4, PLATE_X1 - 2.8, PLATE_X1 + 1, sb, SCREW_Z))
+        d = d.cut(cyl_x(HEAD, PLATE_X1 - 2.8, PLATE_X1 + 1, sb, SCREW_Z))
     return d
 
 
 # ------------------------------------------------------------------------ bin
 def make_bin():
-    b = block(BIN_X0, BIN_X1, BIN_Y0, BIN_Y1, 0, BIN_TOP)
-    b = b.cut(block(BIN_X0 + 8, BIN_X1 - 8, BIN_Y0 + 6, BIN_Y1 - 6, 3, BIN_TOP + 1))
+    t, h = BIN_TOP, H_LID
+    b = block(BIN_X0, BIN_X1, BIN_Y0, BIN_Y1, 0, t)
+    b = b.cut(block(BIN_X0 + SIDE_T, BIN_X1 - SIDE_T, BIN_Y0 + END_T, BIN_Y1 - END_T, FLOOR_T, t + 1))
+    # support tail: side walls, floor and end wall carry the open lid
+    b = b.union(block(BIN_X0, BIN_X0 + SIDE_T, BIN_Y1 - 0.1, TAIL_Y1, 0, t))
+    b = b.union(block(BIN_X1 - SIDE_T, BIN_X1, BIN_Y1 - 0.1, TAIL_Y1, 0, t))
+    b = b.union(block(BIN_X0, BIN_X1, BIN_Y1 - 0.1, TAIL_Y1, 0, FLOOR_T))
+    b = b.union(block(BIN_X0, BIN_X1, TAIL_Y1 - END_T, TAIL_Y1, 0, t))
+    # lid rails, 45 degree undercut, over the whole bin + tail
+    w = 4.5 + LID_T
+    b = b.union(prism([(BIN_X1, t - 0.1), (BIN_X1, h + 0.5), (BIN_X1 - w, h + 0.5),
+                       (BIN_X1 - w, h), (BIN_X1 - 4.5, t), (BIN_X1 - 4.5, t - 0.1)], "y", BIN_Y0, TAIL_Y1))
+    b = b.union(prism([(BIN_X0, t - 0.1), (BIN_X0, h + 0.5), (BIN_X0 + w, h + 0.5),
+                       (BIN_X0 + w, h), (BIN_X0 + 4.5, t), (BIN_X0 + 4.5, t - 0.1)], "y", BIN_Y0, TAIL_Y1))
+    # front lip: the closed lid stops against it
+    b = b.union(block(BIN_X0 + 4, BIN_X1 - 4, BIN_Y0, BIN_Y0 + 3, t - 0.1, h + 0.5))
     # mounting block with the dovetail socket (open top and bottom)
-    m = block(SH_W + 0.4, BIN_X0 + 0.5, DOVE_Y - 17, DOVE_Y + 17, 0, 43)
-    m = m.cut(prism([(SH_W, DOVE_Y - 6.35), (SH_W + 5.35, DOVE_Y - 9.56),
-                     (SH_W + 5.35, DOVE_Y + 9.56), (SH_W, DOVE_Y + 6.35)], "z", -1, 44))
-    b = b.union(m)
-    t, h = BIN_TOP, BIN_TOP + LID_T
-    # lid rails (45 degree undercut): right side full length, left side only at
-    # the back so the driver lug can travel along the front part
-    b = b.union(prism([(BIN_X1, t - 0.1), (BIN_X1, h + 0.5), (BIN_X1 - 8.5, h + 0.5),
-                       (BIN_X1 - 8.5, h), (BIN_X1 - 4.5, t), (BIN_X1 - 4.5, t - 0.1)], "y", BIN_Y0, BIN_Y1))
-    b = b.union(prism([(BIN_X0, t - 0.1), (BIN_X0, h + 0.5), (BIN_X0 + 8.5, h + 0.5),
-                       (BIN_X0 + 8.5, h), (BIN_X0 + 4.5, t), (BIN_X0 + 4.5, t - 0.1)], "y", 73, BIN_Y1))
-    b = b.union(prism([(BIN_Y0, t - 0.1), (BIN_Y0, h + 0.5), (BIN_Y0 + 6, h + 0.5),
-                       (BIN_Y0 + 6, h), (BIN_Y0 + 2, t), (BIN_Y0 + 2, t - 0.1)], "x", 96.5, BIN_X1))
-    return b
+    m = block(SH_W + 0.4, BIN_X0 + 0.5, DOVE_Y - 17, DOVE_Y + 17, 0, 41)
+    m = m.cut(prism([(SH_W, DOVE_Y - 6.35), (SH_W + 5.85, DOVE_Y - 9.6),
+                     (SH_W + 5.85, DOVE_Y + 9.6), (SH_W, DOVE_Y + 6.35)], "z", -1, 42))
+    return b.union(m)
 
 
-# ------------------------------------------------------------------------ lid
-CATCH_TOP = BIN_TOP + LID_T + 4.0          # catch is 4 mm thick on top of the lid
-CATCH_Y0, CATCH_Y1 = BIN_Y0 + 0.4, 32.5    # 32.5 + 40 travel stays clear of the left rail (y 73)
-CATCH_SCREWS = ((101.0, 20.0), (101.0, 28.0))
-LUG_Y = KEY_B0 - PROTRUDE - TRAVEL         # front of the driver lug when the box is out
-
-
+# ------------------------------------------------------------------- lid + catch
 def lid_body():
-    """Plain dovetail lid in the closed position. It has no ear, so it slides
-    into the bin from the back underneath all three undercut rails."""
-    t, h = BIN_TOP, BIN_TOP + LID_T
+    """Plain dovetail lid, closed position. Nothing sticks out, so it slides
+    in from the back of the tail underneath both undercut rails."""
+    t, h = BIN_TOP, H_LID
     xa, xb = BIN_X0 + 4.5 + CLR, BIN_X1 - 4.5 - CLR
-    ya = BIN_Y0 + 2 + CLR
-    l = prism([(xa, t), (xb, t), (xb - LID_T, h), (xa + LID_T, h)], "y", ya, BIN_Y1)
-    return l.intersect(prism([(ya, t), (ya + LID_T, h), (BIN_Y1 + 1, h), (BIN_Y1 + 1, t)], "x", 80, 160))
+    return prism([(xa, t), (xb, t), (xb - LID_T, h), (xa + LID_T, h)], "y", LID_Y0, LID_Y0 + LID_L)
 
 
 def make_lid():
     l = lid_body()
-    h = BIN_TOP + LID_T
-    l = l.union(block(110, 130, 89, 92, h - 0.1, h + 2.5))          # grip ridge
-    for x, y in CATCH_SCREWS:                                       # pilot holes for the catch
-        l = l.cut(cyl_z(PILOT, BIN_TOP - 1, h + 1, x, y))
+    l = l.union(block(120, 140, LID_Y0 + LID_L - 6, LID_Y0 + LID_L - 3, H_LID - 0.1, H_LID + 2.5))
+    for x, y in CATCH_SCREWS:
+        l = l.cut(cyl_z(PILOT, BIN_TOP - 1, H_LID + 1, x, y))
     return l
 
 
 def make_catch():
-    """Screwed onto the lid after the lid is in the bin. Its notch drops over
-    the driver lug, so the lid follows the box. Closed position."""
-    t, h = BIN_TOP, BIN_TOP + LID_T
-    c = block(BIN_X0 - 0.2, 96.1, CATCH_Y0, CATCH_Y1, t, CATCH_TOP)      # left of the front rail
-    c = c.union(block(96.0, 108, BIN_Y0 + 6.4, CATCH_Y1, h, CATCH_TOP))  # plate on top of the lid
-    c = c.cut(lid_body())                                               # hugs the lid edge exactly
-    c = c.cut(block(80, LUG_X1 + 0.4, LUG_Y - 0.3, LUG_Y + 8.3, t - 1, CATCH_TOP + 1))  # lug notch
+    """Screwed onto the lid after the lid is in the rails. It reaches over the
+    left rail and its notch drops over the driver lug. Closed position."""
+    rail_in = BIN_X0 + 4.5 + LID_T            # inner top edge of the left rail
+    c = block(PLATE_X1 + 0.4, rail_in + 0.5, CATCH_Y0, CATCH_Y1, RAIL_TOP + 0.4, LUG_Z1)
+    c = c.union(block(rail_in + 0.4, 120, CATCH_Y0, CATCH_Y1, H_LID, LUG_Z1))
+    c = c.cut(block(80, LUG_X1 + 0.4, LUG_Y0 - 0.3, LUG_Y0 + 8.3, 0, 100))       # lug notch
     for x, y in CATCH_SCREWS:
-        c = c.cut(cyl_z(FREE, t - 1, CATCH_TOP + 1, x, y))
-        c = c.cut(cyl_z(6.4, CATCH_TOP - 1.5, CATCH_TOP + 1, x, y))      # sunk screw heads
+        c = c.cut(cyl_z(FREE, 0, 100, x, y))
+        c = c.cut(cyl_z(HEAD, LUG_Z1 - 2.8, 100, x, y))
     return c
 
 
 # ------------------------------------------------------------------ build all
 shell, box, driver, bin_, lid, catch = (make_shell(), make_box(), make_driver(), make_bin(),
-                                       make_lid(), make_catch())
+                                        make_lid(), make_catch())
 
 
 def placed(part, y):
     return part.translate((0, y, 0))
-
-
-Y_IN, Y_OUT = -PROTRUDE, -PROTRUDE - TRAVEL
 
 
 def vol(a, b):
@@ -233,54 +266,67 @@ def check():
     ok = True
 
     def clash(label, a, b):
-        nonlocal ok
         v = vol(a, b)
         if v > 1e-3:
-            ok = False
-            print(f"  COLLISION {label}: {v:.2f} mm3")
+            print(f"    collision: {label} ({v:.2f} mm3)")
         return v > 1e-3
 
-    # 1. assembling: the bare lid slides in from the back of the bin (every 2 mm)
-    hits = [s for s in range(0, 96, 2) if clash(f"lid insertion at {s} mm", placed(lid, s), bin_)]
-    print(f"  {'FAIL' if hits else 'ok '} lid slides into the bin from the back without hitting anything")
-    # 2. the catch can be screwed on and the bin lowered onto the station
-    lowering = [z for z in range(0, 31, 2) if
-                clash(f"bin lowered {z}", catch.translate((0, 0, z)), placed(driver, Y_OUT))
-                + clash(f"bin lowered {z} (bin)", bin_.translate((0, 0, z)), shell)]
-    print(f"  {'FAIL' if lowering else 'ok '} bin with lid and catch drops onto the station")
-    # 3. working: box and lid move together over the full travel (every 2 mm)
-    bad = 0
+    def step(name, hits):
+        nonlocal ok
+        print(f"  {'FAIL' if hits else 'ok '} {name}")
+        ok = ok and not hits
+
+    print(" assembly")
+    step("1. box slides into the shell from the front",
+         sum(clash(f"box at {y}", placed(box, Y_OUT - y), shell) for y in range(0, 126, 3)))
+    step("2. driver block goes through the wall slot and against the box",
+         sum(clash(f"driver x+{x}", placed(driver, Y_OUT).translate((x, 0, 0)), o)
+             for x in range(0, 16) for o in (shell, placed(box, Y_OUT))))
+    step("3. lid slides into the rails from the back of the tail",
+         sum(clash(f"lid at {s}", placed(lid, s), bin_) for s in range(0, 132, 2)))
+    step("4. catch is put on the lid from above",
+         sum(clash(f"catch z+{z}", catch.translate((0, 0, z)), o)
+             for z in range(0, 16) for o in (bin_, lid)))
+    step("5. bin with lid and catch is lowered onto the station (box out)",
+         sum(clash(f"bin z+{z} {n}", p.translate((0, 0, z)), o)
+             for z in range(0, 72, 2)
+             for n, p in (("bin", bin_), ("lid", lid), ("catch", catch))
+             for o in (shell, placed(box, Y_OUT), placed(driver, Y_OUT))))
+    print(" working")
+    hits = 0
     for s in range(0, int(TRAVEL) + 1, 2):
         b, d, l, c = placed(box, Y_OUT + s), placed(driver, Y_OUT + s), placed(lid, s), placed(catch, s)
-        for n, a, o in (("shell-box", shell, b), ("shell-driver", shell, d), ("box-driver", b, d),
-                        ("bin-driver", bin_, d), ("bin-lid", bin_, l), ("bin-catch", bin_, c),
-                        ("lid-catch", l, c), ("catch-driver", c, d), ("lid-driver", l, d),
-                        ("catch-shell", c, shell), ("lid-shell", l, shell), ("bin-shell", bin_, shell),
-                        ("bin-box", bin_, b)):
-            bad += clash(f"travel {s} mm {n}", a, o)
-    print(f"  {'FAIL' if bad else 'ok '} box and lid move together over the full {TRAVEL:.0f} mm without hitting anything")
-    # 4. things that MUST be blocked
+        parts = (("shell", shell), ("box", b), ("driver", d), ("bin", bin_), ("lid", l), ("catch", c))
+        for i in range(len(parts)):
+            for j in range(i + 1, len(parts)):
+                hits += clash(f"travel {s}: {parts[i][0]}-{parts[j][0]}", parts[i][1], parts[j][1])
+    step(f"box and lid move together over the full {TRAVEL:.0f} mm", hits)
+    opening_back = BIN_Y1 - END_T
+    step(f"open lid fully clears the food opening (lid front {LID_Y0 + TRAVEL:.1f} > {opening_back:.0f})",
+         LID_Y0 + TRAVEL <= opening_back)
+    step(f"open lid lies fully on the rails (lid back {LID_Y0 + LID_L + TRAVEL:.1f} <= {TAIL_Y1:.0f})",
+         LID_Y0 + LID_L + TRAVEL > TAIL_Y1)
+    print(" must be blocked")
     must = [
         ("lid cannot open while box is out", placed(catch, 1), placed(driver, Y_OUT)),
-        ("lid cannot be closed while box is in", placed(catch, TRAVEL - 1), placed(driver, Y_IN)),
+        ("lid cannot close while box is in", placed(catch, TRAVEL - 1), placed(driver, Y_IN)),
         ("lid cannot be lifted off", lid.translate((0, 0, 2)), bin_),
-        ("lid with catch cannot slide off the back", placed(catch, TRAVEL + 3), bin_),
+        ("lid cannot slide off the front", placed(lid, -1), bin_),
         ("box cannot be pulled out further", shell, placed(driver, Y_OUT - 2)),
         ("box cannot be pushed in further", shell, placed(driver, Y_IN + 2)),
-        ("box cannot drop out of the floor", shell, placed(box, Y_IN).translate((0, 0, -2))),
+        ("box cannot drop down out of the shell", shell, placed(box, Y_IN).translate((0, 0, -2))),
+        ("box hangs on the top rail", shell, placed(box, Y_IN).translate((0, 0, -0.6))),
         ("bin cannot be pulled sideways", shell, bin_.translate((2, 0, 0))),
     ]
     for name, a, b in must:
-        v = vol(a, b)
-        print(f"  {'ok ' if v > 1e-3 else 'FAIL'} {name}")
-        ok = ok and v > 1e-3
+        step(name, vol(a, b) <= 1e-3)
     return ok
 
 
 def to_print(part, kind):
-    if kind == "flip":                       # print standing on its roof
+    if kind == "flip":                       # upside down
         part = part.rotate((0, 0, 0), (1, 0, 0), 180)
-    elif kind == "front_down":               # print standing on its front end
+    elif kind == "front_down":               # standing on its front end
         part = part.rotate((0, 0, 0), (1, 0, 0), 90)
     bb = part.val().BoundingBox()
     return part.translate((-bb.xmin, -bb.ymin, -bb.zmin))
@@ -291,30 +337,28 @@ if __name__ == "__main__":
     good = check()
     print("fit check:", "PASSED" if good else "FAILED")
 
-    os.makedirs(f"{OUT}/stl", exist_ok=True)
-    os.makedirs(f"{OUT}/step", exist_ok=True)
+    import shutil
+    for d in ("stl", "step"):
+        shutil.rmtree(f"{OUT}/{d}", ignore_errors=True)
+        os.makedirs(f"{OUT}/{d}")
     for name, part, kind in (("1_shell", shell, "flip"), ("2_box", box, "flip"),
                              ("3_driver", driver, "front_down"), ("4_bin", bin_, None),
-                             ("5_lid", lid, None),
-                             ("6_lid_catch", catch, "flip")):
+                             ("5_lid", lid, None), ("6_lid_catch", catch, "flip")):
         p = to_print(part, kind)
         bb = p.val().BoundingBox()
         cq.exporters.export(p, f"{OUT}/stl/{name}.stl", tolerance=0.02, angularTolerance=0.15)
         print(f"  {name}: {bb.xlen:.1f} x {bb.ylen:.1f} x {bb.zlen:.1f} mm, {p.val().Volume()/1000:.0f} cm3 solid")
 
-    for tag, by, ly in (("closed", Y_OUT, 0), ("open", Y_IN, TRAVEL)):
+    os.makedirs(f"{OUT}/step/_tmp", exist_ok=True)
+    for tag, s in (("closed", 0.0), ("open", TRAVEL)):
+        pos = {"shell": shell, "box": placed(box, Y_OUT + s), "driver": placed(driver, Y_OUT + s),
+               "bin": bin_, "lid": placed(lid, s), "catch": placed(catch, s)}
+        cols = {"shell": (0.55, 0.6, 0.65), "box": (0.9, 0.55, 0.15), "driver": (0.8, 0.15, 0.15),
+                "bin": (0.25, 0.55, 0.3), "lid": (0.95, 0.85, 0.3), "catch": (0.2, 0.35, 0.8)}
         asm = cq.Assembly()
-        asm.add(shell, name="shell", color=cq.Color(0.55, 0.6, 0.65))
-        asm.add(placed(box, by), name="box", color=cq.Color(0.9, 0.55, 0.15))
-        asm.add(placed(driver, by), name="driver", color=cq.Color(0.8, 0.15, 0.15))
-        asm.add(bin_, name="bin", color=cq.Color(0.25, 0.55, 0.3))
-        asm.add(placed(lid, ly), name="lid", color=cq.Color(0.95, 0.85, 0.3))
-        asm.add(placed(catch, ly), name="catch", color=cq.Color(0.2, 0.35, 0.8))
-        asm.save(f"{OUT}/step/assembly_{tag}.step")
-        for n, p in (("shell", shell), ("box", placed(box, by)), ("driver", placed(driver, by)),
-                     ("bin", bin_), ("lid", placed(lid, ly)),
-                     ("catch", placed(catch, ly))):
-            os.makedirs(f"{OUT}/step/_tmp", exist_ok=True)
+        for n, p in pos.items():
+            asm.add(p, name=n, color=cq.Color(*cols[n]))
             cq.exporters.export(p, f"{OUT}/step/_tmp/{tag}_{n}.stl", tolerance=0.05, angularTolerance=0.2)
-    total_y = (BIN_Y1 + TRAVEL) - (Y_OUT)
-    print(f"overall size: {BIN_X1:.0f} wide x {total_y:.0f} deep x {SH_H:.0f} high (limit 200 x 200 x 150)")
+        asm.export(f"{OUT}/step/assembly_{tag}.step")
+    print(f"overall size: {BIN_X1:.0f} wide (x) x {TAIL_Y1 - Y_OUT:.0f} deep (y) x {SH_H:.0f} high"
+          f"  (limit 200 x 200 x 150)")

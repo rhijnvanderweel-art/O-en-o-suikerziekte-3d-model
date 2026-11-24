@@ -18,7 +18,7 @@ def draw(ax, tag, elev, azim, hide=()):
         sh = 0.45 + 0.55 * np.abs(m.face_normals @ L)
         tris.append(m.triangles); cols.append(np.clip(np.outer(sh, c), 0, 1))
     ax.add_collection3d(Poly3DCollection(np.concatenate(tris), facecolors=np.concatenate(cols), edgecolors="none"))
-    ax.set_xlim(-20, 170); ax.set_ylim(-50, 140); ax.set_zlim(-60, 130)
+    ax.set_xlim(-25, 175); ax.set_ylim(-70, 130); ax.set_zlim(-55, 145)
     ax.set_box_aspect((1, 1, 1)); ax.view_init(elev, azim); ax.set_axis_off()
 
 def fig(name, views, titles):
@@ -31,13 +31,15 @@ def fig(name, views, titles):
 
 os.makedirs(f"{OUT}/images", exist_ok=True)
 fig("overview", [dict(tag="closed", elev=28, azim=-60), dict(tag="open", elev=28, azim=-60)],
-    ["Box pulled out - bin closed", "Box pushed in - bin open"])
+    ["Box pulled out - bin closed", "Box pushed in - bin fully open"])
 fig("top", [dict(tag="closed", elev=89, azim=-90), dict(tag="open", elev=89, azim=-90)],
     ["Top view, closed", "Top view, open"])
 fig("back_side", [dict(tag="closed", elev=25, azim=40), dict(tag="open", elev=25, azim=40)],
-    ["Rear view, closed", "Rear view, open"])
+    ["Rear view, closed", "Rear view, open: lid rests on the tail"])
 fig("mechanism", [dict(tag="closed", elev=20, azim=-35, hide=("bin",)), dict(tag="open", elev=20, azim=-35, hide=("bin",))],
-    ["Bin hidden: red driver block holds the lid shut", "Box pushed in: driver drags the lid open"])
+    ["Bin hidden: catch (blue) around the driver lug (red)", "Box pushed in: lid dragged fully back"])
+fig("front_low", [dict(tag="open", elev=4, azim=-90), dict(tag="closed", elev=4, azim=-90, hide=("bin", "lid", "catch"))],
+    ["Front view", "Front view: box hangs 15 mm above the ground"])
 for f in sorted(os.listdir(f"{OUT}/stl")):
     m = trimesh.load(f"{OUT}/stl/{f}")
     print(f, "watertight" if m.is_watertight else "NOT WATERTIGHT", len(m.faces), "faces")
