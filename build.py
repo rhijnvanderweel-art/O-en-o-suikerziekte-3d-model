@@ -75,8 +75,11 @@ LUG_Y0 = 10.3                          # lug front, box out (shell coordinates)
 KEY_B0 = LUG_Y0 - Y_OUT                # same, box coordinates
 KEY_B1 = KEY_B0 + 26.0
 SCREW_B = (KEY_B0 + 8.0, KEY_B0 + 20.0)
-CATCH_Y0, CATCH_Y1 = LID_Y0 + 0.4, 26.0
-CATCH_SCREWS = ((112.0, 7.5), (112.0, 22.0))
+LID_Y1 = LID_Y0 + LID_L                # lid back when closed
+RIGHT_CLR = 1.5        # extra room on the right: the lid is only guided on the left
+KEY_X0 = 89.0          # guide fin on the catch, runs down the outside of the bin wall
+CATCH_Y0 = LID_Y0 + 0.4
+CATCH_SCREWS = ((110.0, 7.5), (110.0, 35.0), (110.0, 60.0))
 
 
 # -------------------------------------------------------------------- helpers
@@ -219,9 +222,11 @@ def make_bin():
 # ------------------------------------------------------------------- lid + catch
 def lid_body():
     """Plain dovetail lid, closed position. Nothing sticks out, so it slides
-    in from the back of the tail underneath both undercut rails."""
+    in from the back of the tail underneath both undercut rails. It is
+    1.5 mm narrower on the right so it can never wedge against the right rail;
+    the right rail only holds it down."""
     t, h = BIN_TOP, H_LID
-    xa, xb = BIN_X0 + 4.5 + CLR, BIN_X1 - 4.5 - CLR
+    xa, xb = BIN_X0 + 4.5 + CLR, BIN_X1 - 4.5 - RIGHT_CLR
     return prism([(xa, t), (xb, t), (xb - LID_T, h), (xa + LID_T, h)], "y", LID_Y0, LID_Y0 + LID_L)
 
 
@@ -234,11 +239,20 @@ def make_lid():
 
 
 def make_catch():
-    """Screwed onto the lid after the lid is in the rails. It reaches over the
-    left rail and its notch drops over the driver lug. Closed position."""
+    """Guide bar, screwed onto the lid after the lid is in the rails.
+    - Its notch drops over the driver lug, so the lid follows the box.
+    - Its fin runs down the OUTSIDE of the bin's left wall along the whole lid
+      length, while the lid edge runs against the INSIDE of the left rail. The
+      lid is held on both sides of the left rail, right next to the lug that
+      drives it, so it cannot turn diagonally and jam.
+    Closed position."""
     rail_in = BIN_X0 + 4.5 + LID_T            # inner top edge of the left rail
-    c = block(PLATE_X1 + 0.4, rail_in + 0.5, CATCH_Y0, CATCH_Y1, RAIL_TOP + 0.4, LUG_Z1)
-    c = c.union(block(rail_in + 0.4, 120, CATCH_Y0, CATCH_Y1, H_LID, LUG_Z1))
+    z_over = RAIL_TOP + 0.4
+    c = block(PLATE_X1 + 0.4, rail_in + 0.5, CATCH_Y0, 26.0, z_over, LUG_Z1)      # reaches the lug
+    c = c.union(block(KEY_X0, rail_in + 0.5, CATCH_Y0, LID_Y1, z_over, LUG_Z1))   # bar over the rail
+    c = c.union(block(KEY_X0, BIN_X0 - CLR, CATCH_Y0, LID_Y1, 46.0, z_over + 0.1))  # guide fin
+    c = c.union(block(rail_in + 0.4, 116, CATCH_Y0, LID_Y1, H_LID, LUG_Z1))       # on top of the lid
+    c = c.cut(lid_body())
     c = c.cut(block(80, LUG_X1 + 0.4, LUG_Y0 - 0.3, LUG_Y0 + 8.3, 0, 100))       # lug notch
     for x, y in CATCH_SCREWS:
         c = c.cut(cyl_z(FREE, 0, 100, x, y))
@@ -306,6 +320,24 @@ def check():
          LID_Y0 + TRAVEL <= opening_back)
     step(f"open lid lies fully on the rails (lid back {LID_Y0 + LID_L + TRAVEL:.1f} <= {TAIL_Y1:.0f})",
          LID_Y0 + LID_L + TRAVEL > TAIL_Y1)
+    print(" lid guidance (the cause of the rough sliding)")
+    s0 = TRAVEL / 2
+    lc = placed(lid, s0).union(placed(catch, s0))
+    cx, cy = (BIN_X0 + BIN_X1) / 2, LID_Y0 + s0 + LID_L / 2
+    left = bin_.intersect(block(0, 110, -10, 200, 0, 100))
+    right = bin_.intersect(block(140, 200, -10, 200, 0, 100))
+    for sign in (1, -1):
+        a = 0.0
+        while a < 3 and vol(lc.rotate((cx, cy, 0), (cx, cy, 1), sign * a), left) <= 1e-3:
+            a += 0.05
+        r = vol(lc.rotate((cx, cy, 0), (cx, cy, 1), sign * (a + 0.05)), right)
+        step(f"lid turning {'left' if sign > 0 else 'right'}: stopped by the left guide at {a:.2f} deg, "
+             f"right rail untouched", a >= 3 or r > 1e-3)
+    for dx in (0.8, -0.8):
+        step(f"lid cannot shift {abs(dx)} mm {'right' if dx > 0 else 'left'} (guided on the left)",
+             vol(lc.translate((dx, 0, 0)), left) <= 1e-3)
+    step("right side of the lid has free room (1 mm shift touches nothing on the right)",
+         vol(lc.translate((1.0, 0, 0)), right) > 1e-3)
     print(" must be blocked")
     must = [
         ("lid cannot open while box is out", placed(catch, 1), placed(driver, Y_OUT)),

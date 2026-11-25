@@ -37,7 +37,10 @@ fig("top", [dict(tag="closed", elev=89, azim=-90), dict(tag="open", elev=89, azi
 fig("back_side", [dict(tag="closed", elev=25, azim=40), dict(tag="open", elev=25, azim=40)],
     ["Rear view, closed", "Rear view, open: lid rests on the tail"])
 fig("mechanism", [dict(tag="closed", elev=20, azim=-35, hide=("bin",)), dict(tag="open", elev=20, azim=-35, hide=("bin",))],
-    ["Bin hidden: catch (blue) around the driver lug (red)", "Box pushed in: lid dragged fully back"])
+    ["Bin hidden: guide bar (blue) on the lid, around the driver lug (red)", "Box pushed in: lid dragged fully back"])
+fig("guide", [dict(tag="closed", elev=8, azim=-150, hide=("shell", "box", "driver")),
+             dict(tag="closed", elev=-2, azim=-90, hide=("shell", "box"))],
+    ["Guide fin runs down the outside of the bin wall", "Front: fin outside the wall, lid edge inside the rail"])
 fig("front_low", [dict(tag="open", elev=4, azim=-90), dict(tag="closed", elev=4, azim=-90, hide=("bin", "lid", "catch"))],
     ["Front view", "Front view: box hangs 15 mm above the ground"])
 for f in sorted(os.listdir(f"{OUT}/stl")):
